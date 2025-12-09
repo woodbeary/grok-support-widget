@@ -34,11 +34,36 @@ Assume repo cloned.
 6. **Deploy**: Vercel chatbot app (env vars set in dashboard); widget.js static-served for embeds.
 
 ## Key Features & Constraints Met
-- **Embeddable**: `<div id="x-support-widget"></div><script src="/widget.js" data-customer-id="demo"></script>` – mounts responsive chat bubble.
-- **Security**: Proxy hides key (server env only); origin lock blocks unauthorized (e.g., non-customer domains). No client exposure – passes inspect/network test.
-- **Streaming/Model Router**: Vercel AI SDK `useChat`/`streamText` for SSE; heuristics route fast/reasoning Grok models.
-- **UX for Origins**: Dev: Localhost auto-ok. Prod: Config via env/customer-id (widget sends id; server validates/adds dynamically if approved). Future: Frontend dashboard for customers to request domain whitelist (server approves).
-- **PNPM/Turbo**: Consistent deps, parallel dev/build. $5 key limit ensures safe trials.
+- **Embeddable**: `<div id="x-support-widget"></div><script src="/widget.js" data-customer-id="demo"></script>` – mounts responsive chat bubble (direct React or iframe fallback).
+- **Security**: Proxy `/api/chat` hides XAI_API_KEY (env only); origin validation (ALLOWED_ORIGINS env, e.g., localhost:3000); customerId header for multi-tenant. No leaks – test with curl/inspect.
+- **Streaming & Routing**: AI SDK `useChat`/`streamText` for real-time tokens; auto-routes light/fast (grok-beta) vs reasoning models (grok-4-1) based on query complexity.
+- **UX/Design**: shadcn clean/modern (Grok-like premium: neutral, responsive bubbles/avatars); theme support, loading/errors handled.
+- **Scalability Prep**: Traces/logs in code; new milestones add evals/admin for bulk grading/improvements.
+- **PNPM/Turbo**: Workspace for parallel apps; fast dev/build with caching.
+
+## Testing & Quality
+- **Unit Tests (Jest)**: `pnpm --filter chatbot test` – ChatWidget renders, submits, handles errors/loading/empty input, props (customerId/theme/onError). Edge cases: Mock hook for isolation.
+- **E2E Tests (Playwright)**: `pnpm --filter chatbot test:e2e` (browsers via `npx playwright install`) – Full flows: Chat interaction, API security (403 unauthorized, 400 invalid/long input), embed toggle, responsive screenshots for UX review (premium aesthetic asserts).
+- **Lint & Build**: `pnpm lint` (ESLint v9/Next config; fix warnings in deps via skips if needed), `pnpm --filter chatbot build:widget` (generates bundles), `pnpm turbo build` (full).
+- **Manual**: Dev servers running, curl API health/security, inspect no key exposure, console logs for traces/debug.
+
+## Milestones & Roadmap
+Milestones 1-4 complete (see `@overview.md` for details/integration). New 5-8 focus scalability/evals/interactivity:
+- 5: Dynamic model upgrades (light → reasoning mid-chat).
+- 6: Tracing/logs for local evals (structured JSON per session).
+- 7: Admin dash (login: admin/login123) for viewing/grading traces with Grok (bulk self-reinforcement).
+- 8: AI SDK tools for interactive UI (e.g., ticket modal triggered in chat).
+
+## Troubleshooting
+- **Build Fails**: Check Vite alias/postcss for Tailwind v4; run `build:widget` after deps.
+- **API Errors**: Verify .env.local (key/origins); test health `curl localhost:3001/api/chat`.
+- **Install Timeout**: `rm -rf node_modules pnpm-lock.yaml && pnpm i` or use npm.
+- **Embed Not Loading**: Ensure bundles built, script src correct (localhost:3001 for dev).
+- **CORS/Origin**: Update ALLOWED_ORIGINS; logs show rejections.
+- **Tests Fail**: Mock deps or install browsers; env key for real API tests.
+- **Mobile Hotspot**: Works offline after install; no cloud deps except xAI API calls.
+
+Deploy-ready (Vercel recommended for edge/API); extend for prod (DB for traces, auth). Feedback welcome!
 
 ## Testing Constraints
 - **No Key Leak**: Widget JS inspectable but harmless; API proxy enforces security.

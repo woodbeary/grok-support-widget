@@ -1,20 +1,24 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## Mock-Site Demo: Embed Chat Widget Tester
 
-First, run the development server:
+This app simulates a customer website embedding the Grok-powered chat widget from `../chatbot`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Quick Start
+1. **Workspace Install**: From root `pnpm i` (PNPM monorepo).
+2. **Dev**: `pnpm --filter mock-site dev` (port 3000) or root `pnpm turbo run dev --parallel`.
+3. **Test Embed**: Visit http://localhost:3000 – See demo homepage with bottom-right bubble. Click to toggle widget (loads from chatbot:3001/widget.js).
+   - Interact: Chat streams via proxy; verify customerId passed, origin secure.
+   - Inspect: Network tab shows no key leaks; console for model routing logs.
+4. **Customize**: Edit `app/page.tsx` for site content; update `<script src>` for prod chatbot URL.
+5. **Build**: `pnpm --filter mock-site build`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Role in Project
+- Demonstrates embed script (`widget.js` from chatbot public/) in real site.
+- Supports iframe-resizer for dynamic height (add CDN/JS if needed).
+- Tests cross-app flow: Embed → widget mount → API proxy → xAI stream.
+
+See root README/@overview.md for full setup, milestones, tests. For prod: Deploy independently, update script src.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
