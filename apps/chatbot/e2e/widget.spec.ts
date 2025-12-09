@@ -57,6 +57,15 @@ test.describe('Chat Widget E2E', () => {
     const body = await response.json();
     expect(body.status).toBe('Chat API ready');
 
+    // Test traces API (milestone 6)
+    const tracesRes = await request.get('/api/traces');
+    expect(tracesRes.status()).toBeLessThan(500); // ok or 404 if empty
+    if (tracesRes.status() === 200) {
+      const tracesBody = await tracesRes.json();
+      expect(Array.isArray(tracesBody.traces)).toBe(true);
+      // expect(tracesBody.total).toBeGreaterThan(0); // if traces exist
+    }
+
     // Test unauthorized origin (simulate)
     const postResponse = await request.post('/api/chat', {
       headers: { origin: 'http://evil.com' },
