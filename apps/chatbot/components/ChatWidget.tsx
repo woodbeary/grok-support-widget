@@ -5,6 +5,7 @@ import { DefaultChatTransport, UIMessage } from 'ai'
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, Send, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import TicketCard from './TicketCard'
 
 interface ChatWidgetProps {
   customerId?: string
@@ -16,7 +17,7 @@ interface ChatWidgetProps {
 
 /**
  * Chat Widget with xAI/Grok dark aesthetic.
- * Black/dark gray theme, user messages on right without avatar.
+ * Renders inline artifacts (like TicketCard) for tool results.
  */
 export default function ChatWidget({
   customerId,
@@ -52,28 +53,6 @@ export default function ChatWidget({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  const [showTicketModal, setShowTicketModal] = useState(false)
-  const [ticketParams, setTicketParams] = useState<{ title: string; description: string } | null>(null)
-
-  // Detect ticket tool calls
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage.role === 'assistant' && lastMessage.parts) {
-        const toolPart = lastMessage.parts.find((p: any) =>
-          p.type?.startsWith?.('tool-') && p.toolName === 'createTicket'
-        ) as any
-        if (toolPart && toolPart.state === 'result') {
-          setTicketParams({
-            title: toolPart.args?.title || 'Support Ticket',
-            description: toolPart.args?.description || ''
-          })
-          setShowTicketModal(true)
-        }
-      }
-    }
-  }, [messages])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim() || isLoading) return
@@ -84,16 +63,36 @@ export default function ChatWidget({
     } catch (err) {
       console.error('[ChatWidget] Send failed:', err)
     }
-    // Re-focus input after sending
     inputRef.current?.focus()
   }
 
+  // Extract text content from message
   const getMessageText = (message: any): string => {
     if (message.content) return message.content
     if (message.parts) {
-      return message.parts.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('')
+      return message.parts
+        .filter((p: any) => p.type === 'text')
+        .map((p: any) => p.text)
+        .join('')
     }
     return ''
+  }
+
+  // Extract ticket tool result from message parts
+  const getTicketFromParts = (parts: any[]): { title: string; description: string; ticketId?: string } | null => {
+    if (!parts) return null
+    const ticketPart = parts.find((p: any) =>
+      p.type === 'tool-createTicket' &&
+      (p.state === 'output-available' || p.state === 'result')
+    )
+    if (ticketPart?.input) {
+      return {
+        title: ticketPart.input.title || 'Support Ticket',
+        description: ticketPart.input.description || '',
+        ticketId: ticketPart.output?.match?.(/ID ([a-f0-9-]+)/)?.[1] || undefined
+      }
+    }
+    return null
   }
 
   // Close widget (sends message to parent if embedded)
@@ -128,7 +127,7 @@ export default function ChatWidget({
         {isEmbed && (
           <button
             onClick={handleClose}
-            className="ml-2 p-1.5 rounded-full hover:bg-[#222] transition-colors"
+            className="ml-2 p-1.5 rounded-full hover:bg-[#222] transition-colors cursor-pointer"
             aria-label="Close chat"
           >
             <X className="w-4 h-4 text-gray-400" />
@@ -137,36 +136,55 @@ export default function ChatWidget({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#000]">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#000]">
         {messages.map((message, index) => {
           const text = getMessageText(message)
           const isUser = message.role === 'user'
+          const ticket = !isUser ? getTicketFromParts(message.parts as any[]) : null
 
-          if (!text) return null
+          // Skip empty messages unless they have a ticket
+          if (!text && !ticket) return null
 
           return (
-            <div
-              key={message.id ?? index}
-              className={cn('flex', isUser ? 'justify-end' : 'justify-start')}
-            >
-              {/* Grok avatar - only for assistant */}
-              {!isUser && (
-                <div className="w-7 h-7 rounded-full bg-[#1a1a1a] flex items-center justify-center mr-2 flex-shrink-0 border border-[#333]">
-                  <span className="text-xs font-medium text-gray-300">G</span>
+            <div key={message.id ?? index} className="space-y-3">
+              {/* Text message */}
+              {text && (
+                <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+                  {/* Grok avatar - only for assistant */}
+                  {!isUser && (
+                    <div className="w-7 h-7 rounded-full bg-[#1a1a1a] flex items-center justify-center mr-2 flex-shrink-0 border border-[#333]">
+                      <span className="text-xs font-medium text-gray-300">G</span>
+                    </div>
+                  )}
+
+                  {/* Message bubble */}
+                  <div
+                    className={cn(
+                      'max-w-[80%] px-4 py-2.5 text-sm leading-relaxed',
+                      isUser
+                        ? 'bg-[#1a1a1a] text-white rounded-2xl rounded-br-sm'
+                        : 'bg-[#111] text-gray-100 rounded-2xl rounded-bl-sm border border-[#222]'
+                    )}
+                  >
+                    {text}
+                  </div>
                 </div>
               )}
 
-              {/* Message bubble */}
-              <div
-                className={cn(
-                  'max-w-[75%] px-4 py-2.5 text-sm leading-relaxed',
-                  isUser
-                    ? 'bg-[#1a1a1a] text-white rounded-2xl rounded-br-sm'
-                    : 'bg-[#111] text-gray-100 rounded-2xl rounded-bl-sm border border-[#222]'
-                )}
-              >
-                {text}
-              </div>
+              {/* Inline Ticket Card artifact */}
+              {ticket && (
+                <div className="flex justify-start">
+                  <div className="w-7 h-7 rounded-full bg-[#1a1a1a] flex items-center justify-center mr-2 flex-shrink-0 border border-[#333] opacity-0">
+                    <span className="text-xs font-medium text-gray-300">G</span>
+                  </div>
+                  <TicketCard
+                    title={ticket.title}
+                    description={ticket.description}
+                    ticketId={ticket.ticketId}
+                    onStartNew={() => window.location.reload()}
+                  />
+                </div>
+              )}
             </div>
           )
         })}
@@ -212,52 +230,15 @@ export default function ChatWidget({
           type="submit"
           disabled={!inputValue.trim() || isLoading}
           className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center transition-all',
+            'w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer',
             inputValue.trim() && !isLoading
               ? 'bg-white text-black hover:bg-gray-200'
-              : 'bg-[#222] text-gray-600'
+              : 'bg-[#222] text-gray-600 cursor-not-allowed'
           )}
         >
           <Send className="w-4 h-4" />
         </button>
       </form>
-
-      {/* Ticket Modal - inline modal for better embed support */}
-      {showTicketModal && ticketParams && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#111] border border-[#333] rounded-xl p-6 m-4 max-w-sm w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full" />
-                Ticket Created
-              </h3>
-              <button
-                onClick={() => setShowTicketModal(false)}
-                className="p-1 rounded hover:bg-[#222] transition-colors"
-              >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-            <p className="text-gray-400 text-sm mb-4">Your support ticket has been created.</p>
-            <div className="space-y-3">
-              <div>
-                <span className="text-xs font-medium text-gray-500 uppercase">Title</span>
-                <p className="font-medium mt-1">{ticketParams.title}</p>
-              </div>
-              <div>
-                <span className="text-xs font-medium text-gray-500 uppercase">Description</span>
-                <p className="text-sm mt-1 p-3 rounded-lg bg-[#0a0a0a] border border-[#222]">{ticketParams.description}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowTicketModal(false)}
-              className="mt-4 w-full py-2 px-4 bg-white text-black rounded-lg font-medium hover:bg-gray-200 transition-colors"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -35,7 +35,8 @@ export function CSATChart({ data }: CSATChartProps) {
                             axisLine={false}
                         />
                         <Tooltip
-                            contentStyle={{ background: '#111', border: 'none', borderRadius: '8px' }}
+                            contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: '8px' }}
+                            itemStyle={{ color: '#fff' }}
                             labelStyle={{ color: '#888' }}
                         />
                         <Line

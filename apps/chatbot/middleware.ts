@@ -3,7 +3,8 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   // Only protect /api/admin paths - let /admin page show its own login form
-  if (request.nextUrl.pathname.startsWith('/api/admin')) {
+  // Exclude /api/admin/login from protection so users can actually log in
+  if (request.nextUrl.pathname.startsWith('/api/admin') && !request.nextUrl.pathname.startsWith('/api/admin/login')) {
     const token = request.cookies.get('admin-token')?.value;
 
     // Check cookie for authentication

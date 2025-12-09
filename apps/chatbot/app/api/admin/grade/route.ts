@@ -12,7 +12,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { sessionId } = body;
+    const { sessionId, instructions } = body;
 
     if (!sessionId) {
       return new Response(JSON.stringify({ error: 'Missing sessionId' }), {
@@ -21,6 +21,7 @@ export async function POST(req: Request) {
       });
     }
 
+    // Fix: Match the path used by chat/route.ts and traces/route.ts
     const tracesDir = path.join(process.cwd(), 'data', 'traces');
     const filePath = path.join(tracesDir, `${sessionId}.json`);
 
@@ -41,13 +42,16 @@ export async function POST(req: Request) {
     });
     const model = xai('grok-4-1-fast-non-reasoning'); // Use light model for grading
 
-    const gradePrompt = `Analyze this chat trace and grade it:
-
+    const defaultCriteria = `
 - Correctness: 1-10 (how accurate/relevant responses are)
 - Efficiency: 1-10 (tokens used, response length appropriateness)
 - Overall score: 1-10 average
 - Suggestions: Brief list of improvements or fixes
-- Feedback: Summary of strengths/weaknesses
+- Feedback: Summary of strengths/weaknesses`;
+
+    const gradePrompt = `Analyze this chat trace and grade it depending on the following criteria:
+
+${instructions || defaultCriteria}
 
 Trace JSON:
 \`\`\`json
@@ -56,11 +60,11 @@ ${JSON.stringify(trace, null, 2)}
 
 Respond ONLY with valid JSON object:
 {
-  "correctness": 5,
-  "efficiency": 7,
-  "overall_score": 6,
+  "correctness": 5, // Approximate if not in criteria
+  "efficiency": 7, // Approximate if not in criteria
+  "overall_score": 6, // Required
   "suggestions": ["Suggestion 1", "Suggestion 2"],
-  "feedback": "Summary here"
+  "feedback": "Summary here based on criteria"
 }`;
 
     const { text: gradeText } = await generateText({

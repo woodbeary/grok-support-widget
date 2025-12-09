@@ -6,7 +6,7 @@ test.describe('Chat Widget E2E', () => {
     await page.goto('/chat?theme=dark');
 
     // Verify initial Grok assistant message shows
-    await expect(page.getByText(/Hello! I am Grok/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/How can I help you/)).toBeVisible({ timeout: 10000 });
 
     // Check UI elements for premium design (shadcn)
     // Use more reliable selectors that work with the actual component

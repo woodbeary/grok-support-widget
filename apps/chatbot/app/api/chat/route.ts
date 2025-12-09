@@ -140,21 +140,42 @@ export async function POST(req: Request) {
     // Optional: Sanitize content further (e.g., remove scripts, but SDK handles injection safety)
 
 
-
     // Milestone 6: Tracing setup
     const cookieStore = await cookies();
     const sessionCookie = (await cookieStore.get('chat-session-id'))?.value;
     const sessionId = sessionCookie || `${Date.now()}-${Math.random().toString(36).substring(2)}`; // generate new if none
 
-    const traceId = `${Date.now()}-${Math.random().toString(36).substring(2)}`;
-    const tracesDir = path.join(process.cwd(), '../../data/traces');
+    // Fix: Store traces in local app data directory so Admin API can find them
+    const tracesDir = path.join(process.cwd(), 'data', 'traces');
     await fs.mkdir(tracesDir, { recursive: true }).catch(() => {
       // ignore if exists or error
     });
-    tracePath = path.join(tracesDir, `${traceId}.json`);
+    // Fix: Use sessionId for filename to prevent duplicate files for the same session
+    // This allows appending/updating the same file as the conversation progresses
+    tracePath = path.join(tracesDir, `${sessionId}.json`);
+
+    // Load existing trace if available to preserve history
+    trace = {
+      id: sessionId,
+      sessionId,
+      userId: customerId,
+      timestamp: new Date().toISOString(),
+      model: null, // Will be set later
+      messages: [], // Will be populated from current request context or just last message
+      steps: []
+    };
+
+    try {
+      const existingContent = await fs.readFile(tracePath, 'utf-8');
+      const existingTrace = JSON.parse(existingContent);
+      // Merge or keep existing useful data
+      trace = { ...existingTrace, ...trace };
+    } catch (e) {
+      // New trace
+    }
     startTime = Date.now();
     trace = {
-      id: traceId,
+      id: sessionId,
       sessionId,
       startTime: new Date().toISOString(),
       endTime: null,
@@ -340,8 +361,9 @@ Provide empathetic, concise, and accurate responses.`;
           trace.totalUsage = usage.totalTokens;
           trace.endTime = new Date().toISOString();
           trace.durationMs = Date.now() - startTime;
-          // Capture tool calls if any from steps (simplified for M6)
-          // Note: event.steps provides detailed step info if needed
+          trace.durationMs = Date.now() - startTime;
+          // Capture steps to detect tool calls (tickets)
+          trace.steps = event.steps;
 
           await fs.writeFile(tracePath, JSON.stringify(trace, null, 2));
           console.log(`[Trace] Saved trace ${trace.id}`);
@@ -365,7 +387,12 @@ Provide empathetic, concise, and accurate responses.`;
     // if (customerId !== 'default') { use custom key/model }
 
     // Use toUIMessageStreamResponse() for compatibility with useChat hook streaming (AI SDK v5)
-    return result.toUIMessageStreamResponse();
+    const response = result.toUIMessageStreamResponse();
+    // Fix: Set session cookie if not present to persist session across messages
+    if (!sessionCookie) {
+      response.headers.set('Set-Cookie', `chat-session-id=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`);
+    }
+    return response;
   } catch (error: unknown) {
     // Verbose error logging for debugging
     const errorMessage = error instanceof Error ? error.message : String(error);
