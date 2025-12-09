@@ -42,3 +42,8 @@ next-env.d.ts
 
 # Turborepo
 .turbo/
+
+data/traces/
+
+# Local data for traces (milestone 6/7)
+apps/chatbot/data/
