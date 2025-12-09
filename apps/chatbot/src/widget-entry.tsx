@@ -1,5 +1,5 @@
 import React from 'react'
-import '../widget-globals.css'
+import './widget-globals.css'
 import ChatWidget from '../components/ChatWidget' // Adjust path as needed
 
 interface WidgetProps {

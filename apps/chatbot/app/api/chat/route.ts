@@ -3,6 +3,19 @@ import { streamText } from 'ai';
 
 export const runtime = 'edge';
 
+/**
+ * Secure proxy to xAI Grok models for chat streaming.
+ * - Origin validation against ALLOWED_ORIGINS env.
+ * - Input validation: messages array, last user msg, length <=4000.
+ * - Model routing: grok-4-1 for complex (long, keywords, math/code), grok-beta otherwise.
+ * - Tenant support via x-customer-id header in prompt/ logs.
+ * - Streaming SSE response, edge runtime for speed.
+ * - Edge cases: unauthorized origin (403), invalid input (400), missing key (500), long msg (400).
+ * - Verbose console logs for debugging: requests, model choice, errors with stack/context.
+ * - Future: rate limiting, sanitization, per-customer config.
+ * - Tests: Unit/Jest for logic, E2E/Playwright for full flow/status codes.
+ * Env req: XAI_API_KEY (from console.x.ai), ALLOWED_ORIGINS (e.g. localhost:3000,example.com)
+ */
 export async function POST(req: Request) {
   if (!process.env.XAI_API_KEY) {
     return new Response('Server configuration error: Missing API key', {
@@ -51,6 +64,16 @@ export async function POST(req: Request) {
 
     const customerId = req.headers.get('x-customer-id') ?? 'default';
 
+  // Verbose logging for debugging API calls
+  console.log('[API Debug] Processing request:', {
+    originHost,
+    customerId,
+    messageLength: lastMsg.content.length,
+    isComplex,
+    modelId,
+    allowedOrigins: allowedOrigins.length,
+  });
+
     // Model router heuristics
     const lowerContent = lastMsg.content.toLowerCase();
     const complexKeywords = ['explain', 'reason', 'calculate', 'analyze', 'solve', 'debug', 'why', 'how does', 'what is'];
@@ -80,7 +103,15 @@ export async function POST(req: Request) {
 
     return result.toTextStreamResponse();
   } catch (error: any) {
-    console.error('Chat API Error:', error);
+    // Verbose error logging for debugging
+    console.error('[API Debug] Full error details:', {
+      error: error.message,
+      stack: error.stack,
+      originHost,
+      customerId,
+      userMessage: lastMsg?.content?.substring(0, 100) + '...',
+    });
+    console.error('Raw error object:', error);
     return new Response(`Internal server error: ${error.message || error}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' },
