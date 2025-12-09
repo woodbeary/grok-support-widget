@@ -6,6 +6,14 @@ import { DefaultChatTransport } from 'ai'
 import { Loader2, Send } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
@@ -67,6 +75,20 @@ export default function ChatWidget({
       customerId,
     });
   }, [status, error, messages.length, customerId]);
+
+  // Detect tool calls for interactive elements
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant' && lastMessage.toolCalls && lastMessage.toolCalls.length > 0) {
+        const ticketCall = lastMessage.toolCalls.find((call: any) => call.name === 'createTicket');
+        if (ticketCall) {
+          setTicketParams(ticketCall.args as { title: string; description: string });
+          setShowTicketModal(true);
+        }
+      }
+    }
+  }, [messages]);
       {
         role: 'assistant' as const,
         content: 'Hello! I am Grok, powered by xAI. How can I help you today?',
@@ -79,6 +101,9 @@ export default function ChatWidget({
   } as any)
 
   const [inputValue, setInputValue] = useState('')
+
+  const [showTicketModal, setShowTicketModal] = useState(false)
+  const [ticketParams, setTicketParams] = useState<{ title: string; description: string } | null>(null)
 
   const inputIsLoading = status === 'streaming'
 
@@ -141,7 +166,28 @@ export default function ChatWidget({
                       : 'bg-muted text-foreground border'
                   )}
                 >
-                  <p className="text-sm leading-relaxed">{(message as any).content}</p>
+                  {(message as any).content && <p className="text-sm leading-relaxed">{(message as any).content}</p>}
+                  {(message as any).toolCalls && (message as any).toolCalls.length > 0 && (
+                    <div className="mt-2 p-2 bg-blue-100 dark:bg-blue-900 rounded text-xs">
+                      <strong>Actions Performed:</strong>
+                      {(message as any).toolCalls.map((tc: any, idx: number) => (
+                        <div key={idx} className="mt-1">
+                          <div className="font-medium">{tc.name}</div>
+                          <pre className="overflow-auto text-xs bg-white dark:bg-gray-800 p-1 rounded">{JSON.stringify(tc.args, null, 2)}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(message as any).toolResults && (message as any).toolResults.length > 0 && (
+                    <div className="mt-2 p-2 bg-green-100 dark:bg-green-900 rounded text-xs">
+                      <strong>Tool Results:</strong>
+                      {(message as any).toolResults.map((tr: any, idx: number) => (
+                        <div key={idx} className="mt-1">
+                          <pre className="overflow-auto text-xs bg-white dark:bg-gray-800 p-1 rounded">{tr.content || tr.result}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -179,6 +225,33 @@ export default function ChatWidget({
             <span className="sr-only">Send message</span>
           </Button>
         </form>
+
+        {/* Interactive Modal for Tool Calls */}
+        <Dialog open={showTicketModal} onOpenChange={setShowTicketModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Support Ticket Created</DialogTitle>
+              <DialogDescription>
+                Based on your conversation, a support ticket has been created to help resolve your issue.
+              </DialogDescription>
+            </DialogHeader>
+            {ticketParams && (
+              <div className="space-y-2 py-4">
+                <div className="flex justify-between">
+                  <span className="font-medium">Title:</span>
+                  <span>{ticketParams.title}</span>
+                </div>
+                <div>
+                  <span className="font-medium">Description:</span>
+                  <p className="text-sm mt-1">{ticketParams.description}</p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={() => setShowTicketModal(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
