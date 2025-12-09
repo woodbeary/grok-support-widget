@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-export const runtime = 'node';
+export const runtime = 'nodejs';
 
 interface TraceSummary {
   sessionId: string;

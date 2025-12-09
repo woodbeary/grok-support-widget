@@ -1,7 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DefaultChatTransport } from 'ai'
 import { Loader2, Send } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -63,6 +63,7 @@ export default function ChatWidget({
         content: 'Hello! I am Grok, powered by xAI. How can I help you today?',
       },
     ],
+
   } as any)
 
   // Verbose effect for state changes - aids debugging in console
@@ -89,16 +90,6 @@ export default function ChatWidget({
       }
     }
   }, [messages]);
-      {
-        role: 'assistant' as const,
-        content: 'Hello! I am Grok, powered by xAI. How can I help you today?',
-      },
-    ],
-    onError: (err: unknown) => {
-      console.error('Chat error:', err)
-      onError?.(err as Error)
-    },
-  } as any)
 
   const [inputValue, setInputValue] = useState('')
 
@@ -198,7 +189,7 @@ export default function ChatWidget({
                 </Avatar>
                 <div className="flex flex-col gap-1 max-w-[70%] p-3 rounded-lg bg-muted text-foreground border">
                   <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" data-testid="loader-icon" />
                     <span className="text-sm">Grok is typing...</span>
                   </div>
                 </div>

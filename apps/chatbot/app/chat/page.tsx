@@ -2,9 +2,10 @@ import ChatWidget from '../../components/ChatWidget';
 
 import Script from 'next/script';
 
-export default function ChatPage({ searchParams }: { searchParams: { customerId?: string; theme?: string } }) {
-  const customerId = searchParams.customerId || 'demo';
-  const theme = (searchParams.theme || 'light') as 'light' | 'dark';
+export default async function ChatPage({ searchParams }: { searchParams: Promise<{ customerId?: string; theme?: string }> }) {
+  const params = await searchParams;
+  const customerId = params.customerId || 'demo';
+  const theme = (params.theme || 'light') as 'light' | 'dark';
 
   return (
     <>

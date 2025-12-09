@@ -3,7 +3,7 @@ import { generateText } from 'ai';
 import fs from 'fs/promises';
 import path from 'path';
 
-export const runtime = 'node';
+export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   if (!process.env.XAI_API_KEY) {

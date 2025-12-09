@@ -6,8 +6,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'node:crypto'
 import { cookies } from 'next/headers';
-import fs from 'fs/promises';
-import path from 'path';
+
 
 function getCookie(req: Request, cookieName: string): string | null {
   const cookieHeader = req.headers.get('cookie');
@@ -33,7 +32,7 @@ function getCookie(req: Request, cookieName: string): string | null {
   return cookies[cookieName] ?? null;
 }
 
-export const runtime = 'edge';
+export const runtime = 'nodejs'; // Switched for M6 tracing & M8 ticket FS ops; note: higher latency than edge but necessary for local storage
 
 /**
  * Secure proxy to xAI Grok models for chat streaming.
@@ -60,6 +59,7 @@ export async function POST(req: Request) {
   const origin = req.headers.get('origin') ?? '';
   const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '').split(',').map(o => o.trim()).filter(Boolean);
   const originHost = origin ? new URL(origin).host : '';
+  const customerId = req.headers.get('x-customer-id') ?? 'default';
   if (originHost && !allowedOrigins.includes(originHost)) {
     console.log(`Unauthorized origin: ${originHost}`);
     return new Response('Unauthorized origin', {
@@ -97,11 +97,11 @@ export async function POST(req: Request) {
 
     // Optional: Sanitize content further (e.g., remove scripts, but SDK handles injection safety)
 
-    const customerId = req.headers.get('x-customer-id') ?? 'default';
+
 
     // Milestone 6: Tracing setup
-    const cookieStore = cookies();
-    const sessionCookie = cookieStore.get('chat-session-id')?.value;
+    const cookieStore = await cookies();
+    const sessionCookie = (await cookieStore.get('chat-session-id'))?.value;
     const sessionId = sessionCookie || `${Date.now()}-${Math.random().toString(36).substring(2)}`; // generate new if none
 
     const traceId = `${Date.now()}-${Math.random().toString(36).substring(2)}`;

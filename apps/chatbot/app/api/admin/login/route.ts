@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers'; // Not used here
 
-export const runtime = 'node'; // Or edge, cookies work in both
+export const runtime = 'nodejs'; // Or edge, cookies work in both // Or edge, cookies work in both
 
 export async function POST(req: NextRequest) {
   try {

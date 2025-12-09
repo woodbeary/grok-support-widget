@@ -294,7 +294,7 @@ export default function AdminPage() {
                   >
                     Bulk Grade ({selectedIds.size})
                   </Button>
-                )}
+  
               </div>
             </CardHeader>
             <CardContent>
@@ -347,7 +347,7 @@ export default function AdminPage() {
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">Ungraded</span>
-                        )}
+          
                       </TableCell>
                       <TableCell className="space-x-2">
                         <Button
@@ -401,8 +401,8 @@ export default function AdminPage() {
                     <p className="text-3xl font-bold text-primary">
                       {Math.round(
                         traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.overall_score || 0), 0) / 
-                        traces.filter(t => t.grade).length
-                      )}
+                        traces.filter(t => t.grade).length)
+        
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">Avg Overall</p>
                   </div>
@@ -410,8 +410,8 @@ export default function AdminPage() {
                     <p className="text-3xl font-bold text-primary">
                       {Math.round(
                         traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.correctness || 0), 0) / 
-                        traces.filter(t => t.grade).length
-                      )}
+                        traces.filter(t => t.grade).length)
+        
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">Avg Correctness</p>
                   </div>
@@ -419,14 +419,13 @@ export default function AdminPage() {
                     <p className="text-3xl font-bold text-primary">
                       {Math.round(
                         traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.efficiency || 0), 0) / 
-                        traces.filter(t => t.grade).length
-                      )}
+                        traces.filter(t => t.grade).length)
+        
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">Avg Efficiency</p>
                   </div>
                 </div>
 
-                {analysis && (
                   <div className="mt-8 pt-6 border-t border-border">
                     <h3 className="text-lg font-semibold mb-4">Self-Reinforcement Analysis</h3>
                     <Accordion type="single" collapsible defaultValue="insights">
@@ -442,7 +441,7 @@ export default function AdminPage() {
                                 ))}
                               </ul>
                             </div>
-                          )}
+            
                           {analysis.prompt_tweaks && analysis.prompt_tweaks.length > 0 && (
                             <div>
                               <h4 className="font-medium mb-2">Suggested Prompt Tweaks:</h4>
@@ -452,7 +451,7 @@ export default function AdminPage() {
                                 ))}
                               </ul>
                             </div>
-                          )}
+            
                           {analysis.fixes && analysis.fixes.length > 0 && (
                             <div>
                               <h4 className="font-medium mb-2">Actionable Fixes:</h4>
@@ -462,19 +461,19 @@ export default function AdminPage() {
                                 ))}
                               </ul>
                             </div>
-                          )}
+            
                           {analysis.recommendations && (
                             <div>
                               <h4 className="font-medium mb-2">Overall Recommendations:</h4>
                               <p className="text-sm">{analysis.recommendations}</p>
                             </div>
-                          )}
+            
                         </AccordionContent>
                       </AccordionItem>
                     </Accordion>
                   </div>
-                )}
-              )}
+  
+
             </CardContent>
           </Card>
 
@@ -532,7 +531,7 @@ export default function AdminPage() {
                         </div>
                       </AccordionContent>
                     </AccordionItem>
-                  )}
+    
                 </Accordion>
               </CardContent>
             </Card>
