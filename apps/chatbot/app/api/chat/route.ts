@@ -1,5 +1,5 @@
 import { createXai } from '@ai-sdk/xai';
-import { streamText } from 'ai';
+import { streamText, convertToModelMessages } from 'ai';
 import { tool } from 'ai'
 import { z } from 'zod'
 import fs from 'fs/promises'
@@ -38,7 +38,7 @@ export const runtime = 'nodejs'; // Switched for M6 tracing & M8 ticket FS ops; 
  * Secure proxy to xAI Grok models for chat streaming.
  * - Origin validation against ALLOWED_ORIGINS env.
  * - Input validation: messages array, last user msg, length <=4000.
- * - Advanced Model Routing & Dynamic Upgrades (Milestone 5): Start with low-latency grok-beta; analyze full context/history (keywords/length/tools in user msgs, tool_calls in assistant) → escalate to grok-4-1 mid-chat for reasoning. Session state via 'chat_session' cookie (JSON {sessionId, model}); once escalated, persist for session.
+ * - Advanced Model Routing & Dynamic Upgrades (Milestone 5): Start with low-latency grok-4-1-fast-non-reasoning; analyze full context/history → escalate to grok-4-1-fast-reasoning mid-chat. Session state via 'chat_session' cookie.
  * - Logs: Console traces for model switches ([Model Escalation]), latency ([Performance]), debug ([API Debug]).
  * - Tenant support via x-customer-id header in prompt/ logs.
  * - Streaming SSE response, edge runtime for speed.
@@ -76,22 +76,64 @@ export async function POST(req: Request) {
   // }
 
 
+  // Variables declared outside try for access in catch block (tracing)
+  let trace: any = null;
+  let tracePath: string = '';
+  let startTime: number = 0;
+  let lastMsg: any = null;
 
   try {
     const body = await req.json();
-    const { messages } = body;
+    let { messages } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response('Invalid or missing messages array', { status: 400 });
     }
 
+    // Extract message content - handle BOTH AI SDK v5 format (parts) AND legacy format (content)
+    const getMessageContent = (msg: any): string => {
+      // AI SDK v5 format: message has 'parts' array with text parts
+      if (msg.parts && Array.isArray(msg.parts)) {
+        const textParts = msg.parts.filter((p: any) => p.type === 'text');
+        return textParts.map((p: any) => p.text).join('');
+      }
+      // Legacy format: message has 'content' string
+      if (typeof msg.content === 'string') {
+        return msg.content;
+      }
+      return '';
+    };
+
+    // Normalize messages to UI format (with parts) for convertToModelMessages
+    const normalizeMessages = (msgs: any[]): any[] => {
+      return msgs.map((msg: any) => {
+        // Already in parts format
+        if (msg.parts && Array.isArray(msg.parts)) {
+          return msg;
+        }
+        // Convert legacy content string to parts format
+        if (typeof msg.content === 'string') {
+          return {
+            ...msg,
+            parts: [{ type: 'text', text: msg.content }],
+          };
+        }
+        return msg;
+      });
+    };
+
+    // Normalize messages for processing
+    messages = normalizeMessages(messages);
+
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role !== 'user' || typeof lastMsg.content !== 'string' || lastMsg.content.trim() === '') {
+    const lastMsgContent = getMessageContent(lastMsg);
+
+    if (lastMsg.role !== 'user' || lastMsgContent.trim() === '') {
       return new Response('Invalid last user message', { status: 400 });
     }
 
     // Input sanitization: limit length to prevent abuse/token explosion
-    if (lastMsg.content.length > 4000) {
+    if (lastMsgContent.length > 4000) {
       return new Response('Message too long (max 4000 chars)', { status: 400 });
     }
 
@@ -123,8 +165,8 @@ export async function POST(req: Request) {
       decision: null,
       input: {
         messagesCount: messages.length,
-        totalChars: messages.reduce((acc, msg) => acc + (typeof msg.content === 'string' ? msg.content.length : 0), 0),
-        lastUserPreview: lastMsg.content.substring(0, 200) + (lastMsg.content.length > 200 ? ' [truncated for PII]' : ''),
+        totalChars: messages.reduce((acc: number, msg: any) => acc + getMessageContent(msg).length, 0),
+        lastUserPreview: lastMsgContent.substring(0, 200) + (lastMsgContent.length > 200 ? ' [truncated for PII]' : ''),
       },
       output: null,
       finishReason: null,
@@ -134,31 +176,35 @@ export async function POST(req: Request) {
       error: null,
     };
 
-  // Verbose logging for debugging API calls
-  console.log('[API Debug] Processing request:', {
-    originHost,
-    customerId,
-    messageLength: lastMsg.content.length,
-    allowedOrigins: allowedOrigins.length,
-  });
+    // Verbose logging for debugging API calls
+    console.log('[API Debug] Processing request:', {
+      originHost,
+      customerId,
+      messageLength: lastMsgContent.length,
+      allowedOrigins: allowedOrigins.length,
+    });
 
     // Session state & full history analysis for dynamic model routing/escalation
     const sessionCookieName = 'chat_session';
 
     interface SessionData {
-      model: 'grok-beta' | 'grok-4-1';
+      model: 'grok-4-1-fast-non-reasoning' | 'grok-4-1-fast-reasoning';
       sessionId: string;
     }
 
-    let sessionData: SessionData = { model: 'grok-beta', sessionId: crypto.randomUUID() };
+    let sessionData: SessionData = { model: 'grok-4-1-fast-non-reasoning', sessionId: crypto.randomUUID() };
     const cookieValue = getCookie(req, sessionCookieName);
     if (cookieValue) {
       try {
         const parsed = JSON.parse(cookieValue) as Partial<SessionData>;
-        sessionData = {
-          model: (parsed.model as 'grok-beta' | 'grok-4-1') ?? 'grok-beta',
-          sessionId: parsed.sessionId ?? crypto.randomUUID()
-        };
+        if (parsed && parsed.sessionId) {
+          sessionData = {
+            sessionId: parsed.sessionId,
+            model: (parsed.model as 'grok-4-1-fast-non-reasoning' | 'grok-4-1-fast-reasoning') ?? 'grok-4-1-fast-non-reasoning',
+          };
+        } else {
+          sessionData.sessionId = parsed.sessionId ?? crypto.randomUUID();
+        }
       } catch {
         console.warn(`[Session] Invalid cookie for ${sessionCookieName}, generating new session ${sessionData.sessionId.slice(0, 8)}`);
       }
@@ -177,11 +223,11 @@ export async function POST(req: Request) {
     for (const msg of messages) {
       if (msg.role === 'user') {
         numUserMessages++;
-        const content = typeof msg.content === 'string' ? msg.content.toLowerCase() : '';
+        const content = getMessageContent(msg).toLowerCase();
         totalUserLength += content.length;
         if (complexKeywords.some(kw => content.includes(kw)) ||
-            mathRegex.test(content) ||
-            codeRegex.test(content)) {
+          mathRegex.test(content) ||
+          codeRegex.test(content)) {
           hasComplexKeywordOrCodeInHistory = true;
         }
       } else if (msg.role === 'assistant') {
@@ -196,24 +242,24 @@ export async function POST(req: Request) {
 
     const avgMsgLength = numUserMessages > 0 ? totalUserLength / numUserMessages : 0;
     const needsHeavyModel = totalUserLength > 1000 ||
-                            numUserMessages > 5 ||
-                            hasComplexKeywordOrCodeInHistory ||
-                            hasToolCallsInHistory ||
-                            avgMsgLength > 150;
+      numUserMessages > 5 ||
+      hasComplexKeywordOrCodeInHistory ||
+      hasToolCallsInHistory ||
+      avgMsgLength > 150;
 
-    const decidedModel = (needsHeavyModel || previousModel === 'grok-4-1') ? 'grok-4-1' : 'grok-beta';
+    const decidedModel = (needsHeavyModel || previousModel === 'grok-4-1-fast-reasoning') ? 'grok-4-1-fast-reasoning' : 'grok-4-1-fast-non-reasoning';
     const modelId = decidedModel;
 
     const switchOccurred = decidedModel !== previousModel;
     if (switchOccurred) {
-      console.log(`[Model Escalation] Session ${sessionData.sessionId.slice(0,8)}... : ${previousModel} → ${modelId} | Triggers: len=${totalUserLength}, msgs=${numUserMessages}, complex=${hasComplexKeywordOrCodeInHistory}, tools=${hasToolCallsInHistory}, avg=${avgMsgLength.toFixed(0)}`);
+      console.log(`[Model Escalation] Session ${sessionData.sessionId.slice(0, 8)}... : ${previousModel} → ${modelId} | Triggers: len=${totalUserLength}, msgs=${numUserMessages}, complex=${hasComplexKeywordOrCodeInHistory}, tools=${hasToolCallsInHistory}, avg=${avgMsgLength.toFixed(0)}`);
     }
 
     // Updated verbose logging with model info
     console.log('[API Debug] Request:', {
       originHost,
       customerId,
-      sessionId: sessionData.sessionId.slice(0,8) + '...',
+      sessionId: sessionData.sessionId.slice(0, 8) + '...',
       previousModel,
       modelId,
       switchOccurred,
@@ -233,11 +279,11 @@ export async function POST(req: Request) {
 
     const createTicketTool = tool({
       description: 'Creates a support ticket for the customer. Use this when the user has an issue that needs tracking or escalation beyond this chat.',
-      parameters: z.object({
+      inputSchema: z.object({
         title: z.string().describe('Short title summarizing the issue'),
         description: z.string().describe('Full description including user details and context'),
       }),
-      execute: async ({ title, description }) => {
+      execute: async ({ title, description }: { title: string; description: string }) => {
         try {
           const ticketsDir = path.join(process.cwd(), 'data', 'tickets');
           await fs.mkdir(ticketsDir, { recursive: true });
@@ -281,16 +327,45 @@ Provide empathetic, concise, and accurate responses.`;
         createTicket: createTicketTool,
       },
       model,
-      messages,
+      // Convert UI messages (with parts) to model messages (with content) for streamText
+      messages: convertToModelMessages(messages),
       system: systemPrompt,
-      // onFinish for tracing removed (Milestone 6); console logs used for M5
-      // onError for tracing removed (Milestone 6)
+      onFinish: async (event) => {
+        if (!trace || !tracePath) return;
+        try {
+          const { text, usage, finishReason } = event;
+          trace.output = text;
+          trace.finishReason = finishReason;
+          trace.usage = usage;
+          trace.totalUsage = usage.totalTokens;
+          trace.endTime = new Date().toISOString();
+          trace.durationMs = Date.now() - startTime;
+          // Capture tool calls if any from steps (simplified for M6)
+          // Note: event.steps provides detailed step info if needed
+
+          await fs.writeFile(tracePath, JSON.stringify(trace, null, 2));
+          console.log(`[Trace] Saved trace ${trace.id}`);
+        } catch (err) {
+          console.error('[Trace] Failed to save trace:', err);
+        }
+      },
+      onError: async (error) => {
+        // Handled by outer try/catch for the trace update, but can log here too
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (trace && tracePath) {
+          trace.error = errorMsg;
+          trace.endTime = new Date().toISOString();
+          trace.durationMs = Date.now() - startTime;
+          await fs.writeFile(tracePath, JSON.stringify(trace, null, 2)).catch(console.error);
+        }
+      }
     });
 
     // Future: Dynamic per-customer config (e.g., model, key from DB/env map)
     // if (customerId !== 'default') { use custom key/model }
 
-    return result.toTextStreamResponse();
+    // Use toUIMessageStreamResponse() for compatibility with useChat hook streaming (AI SDK v5)
+    return result.toUIMessageStreamResponse();
   } catch (error: unknown) {
     // Verbose error logging for debugging
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -306,7 +381,7 @@ Provide empathetic, concise, and accurate responses.`;
 
     // Milestone 6: Save trace on error
     if (trace && tracePath) {
-      trace.error = error.message || String(error);
+      trace.error = errorMessage;
       trace.endTime = new Date().toISOString();
       trace.durationMs = Date.now() - startTime;
       await fs.writeFile(tracePath, JSON.stringify(trace, null, 2)).catch(writeErr => {
@@ -314,7 +389,7 @@ Provide empathetic, concise, and accurate responses.`;
       });
     }
 
-    return new Response(`Internal server error: ${error.message || error}`, {
+    return new Response(`Internal server error: ${errorMessage}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain' },
     });

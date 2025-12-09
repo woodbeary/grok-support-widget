@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: [
     ['html'],
     ['list'],
-    ...(process.env.CI ? [['json', { outputFile: 'test-results.json' }]] : []),
+    ...(process.env.CI ? [['json', { outputFile: 'test-results.json' }] as ['json', { outputFile: string }]] : []),
   ],
   use: {
     baseURL: 'http://localhost:3001',

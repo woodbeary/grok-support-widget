@@ -31,14 +31,14 @@ export async function POST(req: Request) {
     }
 
     if (gradedTraces.length === 0) {
-      return new Response(JSON.stringify({ error: 'No graded traces to analyze' }), { 
-        status: 400, 
-        headers: { 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'No graded traces to analyze' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
       });
     }
 
     const xai = createXai({ apiKey: process.env.XAI_API_KEY });
-    const model = xai('grok-beta');
+    const model = xai('grok-4-1-fast-reasoning');
 
     const numGraded = gradedTraces.length;
     const avgOverall = Math.round(gradedTraces.reduce((sum: number, t: any) => sum + t.grade.overall_score, 0) / numGraded);
@@ -79,7 +79,6 @@ Respond in structured JSON:
     const { text: analysisText } = await generateText({
       model,
       prompt: analyzePrompt,
-      maxTokens: 800,
     });
 
     let analysis;

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     const xai = createXai({
       apiKey: process.env.XAI_API_KEY,
     });
-    const model = xai('grok-beta'); // Use light model for grading
+    const model = xai('grok-4-1-fast-non-reasoning'); // Use light model for grading
 
     const gradePrompt = `Analyze this chat trace and grade it:
 
@@ -66,7 +66,6 @@ Respond ONLY with valid JSON object:
     const { text: gradeText } = await generateText({
       model,
       prompt: gradePrompt,
-      maxTokens: 500,
     });
 
     let grade;

@@ -5,9 +5,9 @@ export const runtime = 'nodejs';
 
 export async function GET(
   req: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const { sessionId } = params;
+  const { sessionId } = await params;
   if (!sessionId) {
     return new Response(JSON.stringify({ error: 'Missing sessionId' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }

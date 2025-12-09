@@ -14,6 +14,7 @@ interface TraceSummary {
     feedback: string;
     gradedAt?: string;
   } | null;
+  hasTicket?: boolean;
 }
 
 export async function GET() {
@@ -28,10 +29,16 @@ export async function GET() {
       const content = await fs.readFile(filePath, 'utf8');
       const data = JSON.parse(content);
       const sessionId = file.replace('.json', '');
+
+      const hasTicket = data.steps?.some((step: any) =>
+        step.toolCalls?.some((tc: any) => tc.toolName === 'createTicket' || tc.name === 'createTicket')
+      ) || false;
+
       traces.push({
         sessionId,
         timestamp: data.timestamp,
         grade: data.grade,
+        hasTicket,
       });
     }
 

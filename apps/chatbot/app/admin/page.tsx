@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -8,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CSATChart } from '@/components/charts/CSATChart';
+import { DeflectionChart } from '@/components/charts/DeflectionChart';
 
 interface TraceSummary {
   sessionId: string;
@@ -18,8 +22,10 @@ interface TraceSummary {
     overall_score: number;
     suggestions: string[];
     feedback: string;
-    gradedAt?: string;
+
+
   } | null;
+  hasTicket?: boolean;
 }
 
 interface FullTrace extends TraceSummary {
@@ -43,6 +49,20 @@ export default function AdminPage() {
   useEffect(() => {
     fetchTraces();
   }, []);
+
+  const csatData = traces
+    .filter(t => t.grade?.overall_score)
+    .sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
+    .map(t => ({
+      sessionId: t.sessionId,
+      score: t.grade!.overall_score,
+      date: t.timestamp || new Date().toISOString(),
+    }));
+
+  const deflectionData = [
+    { name: 'Automated', value: traces.length - traces.filter(t => t.hasTicket).length, color: '#10b981' },
+    { name: 'Escalated', value: traces.filter(t => t.hasTicket).length, color: '#ef4444' },
+  ];
 
   const fetchTraces = async () => {
     try {
@@ -74,8 +94,8 @@ export default function AdminPage() {
       });
       if (res.ok) {
         const newGrade = await res.json();
-        setTraces(prev => prev.map(t => 
-          t.sessionId === sessionId 
+        setTraces(prev => prev.map(t =>
+          t.sessionId === sessionId
             ? { ...t, grade: { ...newGrade, gradedAt: new Date().toISOString() } }
             : t
         ));
@@ -169,7 +189,6 @@ export default function AdminPage() {
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const username = formData.get('username') as string;
     const password = formData.get('password') as string;
     setLoginError('');
 
@@ -177,7 +196,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ password }),
       });
       if (res.ok) {
         setShowLogin(false);
@@ -237,18 +256,14 @@ export default function AdminPage() {
           <CardContent className="pt-0">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input id="username" name="username" defaultValue="admin" required />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" name="password" type="password" placeholder="login123" required />
+                <Input id="password" name="password" type="password" placeholder="Enter admin password" required />
               </div>
               {loginError && <p className="text-sm text-destructive small-caps">{loginError}</p>}
               <Button type="submit" className="w-full">Login</Button>
             </form>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Default: admin / login123 (set ADMIN_PASSWORD in .env.local)
+              Set ADMIN_PASSWORD in .env.local (default: login123)
             </p>
           </CardContent>
         </Card>
@@ -269,7 +284,7 @@ export default function AdminPage() {
         </Button>
       </div>
       <p className="text-muted-foreground mb-4">Local-only tool to review chat sessions, grade with Grok, aggregate for improvements.</p>
-      
+
       {traces.length === 0 ? (
         <Card>
           <CardContent className="p-6">
@@ -287,14 +302,14 @@ export default function AdminPage() {
                   Export CSV
                 </Button>
                 {selectedIds.size > 0 && (
-                  <Button 
-                    size="sm" 
-                    onClick={() => bulkGrade(Array.from(selectedIds))} 
+                  <Button
+                    size="sm"
+                    onClick={() => bulkGrade(Array.from(selectedIds))}
                     variant="destructive"
                   >
                     Bulk Grade ({selectedIds.size})
                   </Button>
-  
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -302,7 +317,7 @@ export default function AdminPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[50px]">
-                      <Checkbox 
+                      <Checkbox
                         checked={selectedIds.size === traces.length && traces.length > 0}
                         onCheckedChange={(checked) => {
                           if (checked) {
@@ -324,7 +339,7 @@ export default function AdminPage() {
                   {traces.map((trace) => (
                     <TableRow key={trace.sessionId}>
                       <TableCell>
-                        <Checkbox 
+                        <Checkbox
                           checked={selectedIds.has(trace.sessionId)}
                           onCheckedChange={(checked) => {
                             const newSet = new Set(selectedIds);
@@ -347,7 +362,7 @@ export default function AdminPage() {
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">Ungraded</span>
-          
+                        )}
                       </TableCell>
                       <TableCell className="space-x-2">
                         <Button
@@ -377,8 +392,8 @@ export default function AdminPage() {
           <Card className="mb-6">
             <CardHeader className="flex items-center justify-between">
               <CardTitle>Aggregates & Stats</CardTitle>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={performAnalysis}
                 disabled={analyzing || traces.filter(t => t.grade).length === 0}
@@ -390,90 +405,100 @@ export default function AdminPage() {
               {traces.filter(t => t.grade).length === 0 ? (
                 <p className="text-muted-foreground">No graded traces yet. Grade some to see stats and enable self-reinforcement insights.</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary">
-                      {traces.filter(t => t.grade).length}/{traces.length}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">Graded Sessions</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary">
-                      {Math.round(
-                        traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.overall_score || 0), 0) / 
-                        traces.filter(t => t.grade).length)
-        
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">Avg Overall</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary">
-                      {Math.round(
-                        traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.correctness || 0), 0) / 
-                        traces.filter(t => t.grade).length)
-        
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">Avg Correctness</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary">
-                      {Math.round(
-                        traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.efficiency || 0), 0) / 
-                        traces.filter(t => t.grade).length)
-        
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">Avg Efficiency</p>
-                  </div>
-                </div>
+                <>
+                  <h1 className="text-3xl font-bold mb-8">Grok Interview Demo - Admin Dashboard</h1>
 
-                  <div className="mt-8 pt-6 border-t border-border">
-                    <h3 className="text-lg font-semibold mb-4">Self-Reinforcement Analysis</h3>
-                    <Accordion type="single" collapsible defaultValue="insights">
-                      <AccordionItem value="insights">
-                        <AccordionTrigger>View AI-Generated Insights</AccordionTrigger>
-                        <AccordionContent className="space-y-4">
-                          {analysis.patterns && analysis.patterns.length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Detected Patterns/Issues:</h4>
-                              <ul className="list-disc ml-6 space-y-1">
-                                {analysis.patterns.map((pattern: string, idx: number) => (
-                                  <li key={idx} className="text-sm">{pattern}</li>
-                                ))}
-                              </ul>
-                            </div>
-            
-                          {analysis.prompt_tweaks && analysis.prompt_tweaks.length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Suggested Prompt Tweaks:</h4>
-                              <ul className="list-disc ml-6 space-y-1">
-                                {analysis.prompt_tweaks.map((tweak: string, idx: number) => (
-                                  <li key={idx} className="text-sm">{tweak}</li>
-                                ))}
-                              </ul>
-                            </div>
-            
-                          {analysis.fixes && analysis.fixes.length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Actionable Fixes:</h4>
-                              <ul className="list-disc ml-6 space-y-1">
-                                {analysis.fixes.map((fix: string, idx: number) => (
-                                  <li key={idx} className="text-sm">{fix}</li>
-                                ))}
-                              </ul>
-                            </div>
-            
-                          {analysis.recommendations && (
-                            <div>
-                              <h4 className="font-medium mb-2">Overall Recommendations:</h4>
-                              <p className="text-sm">{analysis.recommendations}</p>
-                            </div>
-            
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <CSATChart data={csatData} />
+                    <DeflectionChart data={deflectionData} />
                   </div>
-  
 
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-primary">
+                        {traces.filter(t => t.grade).length}/{traces.length}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Graded Sessions</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-primary">
+                        {Math.round(
+                          traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.overall_score || 0), 0) /
+                          traces.filter(t => t.grade).length
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Avg Overall</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-primary">
+                        {Math.round(
+                          traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.correctness || 0), 0) /
+                          traces.filter(t => t.grade).length
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Avg Correctness</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-primary">
+                        {Math.round(
+                          traces.filter(t => t.grade).reduce((sum, t) => sum + (t.grade!.efficiency || 0), 0) /
+                          traces.filter(t => t.grade).length
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Avg Efficiency</p>
+                    </div>
+                  </div>
+
+                  {analysis && (
+                    <div className="mt-8 pt-6 border-t border-border">
+                      <h3 className="text-lg font-semibold mb-4">Self-Reinforcement Analysis</h3>
+                      <Accordion type="single" collapsible defaultValue="insights">
+                        <AccordionItem value="insights">
+                          <AccordionTrigger>View AI-Generated Insights</AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            {analysis.patterns && analysis.patterns.length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Detected Patterns/Issues:</h4>
+                                <ul className="list-disc ml-6 space-y-1">
+                                  {analysis.patterns.map((pattern: string, idx: number) => (
+                                    <li key={idx} className="text-sm">{pattern}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {analysis.prompt_tweaks && analysis.prompt_tweaks.length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Suggested Prompt Tweaks:</h4>
+                                <ul className="list-disc ml-6 space-y-1">
+                                  {analysis.prompt_tweaks.map((tweak: string, idx: number) => (
+                                    <li key={idx} className="text-sm">{tweak}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {analysis.fixes && analysis.fixes.length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Actionable Fixes:</h4>
+                                <ul className="list-disc ml-6 space-y-1">
+                                  {analysis.fixes.map((fix: string, idx: number) => (
+                                    <li key={idx} className="text-sm">{fix}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {analysis.recommendations && (
+                              <div>
+                                <h4 className="font-medium mb-2">Overall Recommendations:</h4>
+                                <p className="text-sm">{analysis.recommendations}</p>
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -531,7 +556,8 @@ export default function AdminPage() {
                         </div>
                       </AccordionContent>
                     </AccordionItem>
-    
+                  )}
+
                 </Accordion>
               </CardContent>
             </Card>
