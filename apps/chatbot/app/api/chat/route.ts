@@ -153,7 +153,7 @@ export async function POST(req: Request) {
       try {
         const parsed = JSON.parse(cookieValue) as Partial<SessionData>;
         sessionData = {
-          model: (parsed.model as 'grok-beta' | 'grok-4-1' ?? 'grok-beta'),
+          model: (parsed.model as 'grok-beta' | 'grok-4-1') ?? 'grok-beta',
           sessionId: parsed.sessionId ?? crypto.randomUUID()
         };
       } catch (e) {
@@ -221,15 +221,7 @@ export async function POST(req: Request) {
       allowedOrigins: allowedOrigins.length,
     });
 
-    // Update trace with model decision
-    trace.modelId = modelId;
-    trace.decision = {
-      isComplex,
-      queryLength: lowerContent.length,
-      hasComplexKeyword,
-      hasMath: mathRegex.test(lowerContent),
-      hasCode: codeRegex.test(lowerContent),
-    };
+
 
     const xai = createXai({
       apiKey: process.env.XAI_API_KEY,
