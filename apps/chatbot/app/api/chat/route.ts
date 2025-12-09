@@ -1,5 +1,10 @@
 import { createXai } from '@ai-sdk/xai';
 import { streamText } from 'ai';
+import { tool } from 'ai'
+import { z } from 'zod'
+import fs from 'fs/promises'
+import path from 'path'
+import { randomUUID } from 'node:crypto'
 import { cookies } from 'next/headers';
 import fs from 'fs/promises';
 import path from 'path';
@@ -28,20 +33,21 @@ function getCookie(req: Request, cookieName: string): string | null {
   return cookies[cookieName] ?? null;
 }
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 /**
  * Secure proxy to xAI Grok models for chat streaming.
  * - Origin validation against ALLOWED_ORIGINS env.
  * - Input validation: messages array, last user msg, length <=4000.
- * - Model routing: grok-4-1 for complex (long, keywords, math/code), grok-beta otherwise.
+ * - Advanced Model Routing & Dynamic Upgrades (Milestone 5): Start with low-latency grok-beta; analyze full context/history (keywords/length/tools in user msgs, tool_calls in assistant) → escalate to grok-4-1 mid-chat for reasoning. Session state via 'chat_session' cookie (JSON {sessionId, model}); once escalated, persist for session.
+ * - Logs: Console traces for model switches ([Model Escalation]), latency ([Performance]), debug ([API Debug]).
  * - Tenant support via x-customer-id header in prompt/ logs.
  * - Streaming SSE response, edge runtime for speed.
  * - Edge cases: unauthorized origin (403), invalid input (400), missing key (500), long msg (400).
- * - Verbose console logs for debugging: requests, model choice, errors with stack/context.
- * - Future: rate limiting, sanitization, per-customer config.
- * - Tests: Unit/Jest for logic, E2E/Playwright for full flow/status codes.
- * Env req: XAI_API_KEY (from console.x.ai), ALLOWED_ORIGINS (e.g. localhost:3000,example.com)
+ * - Verbose console logs for debugging: requests, model choice/escalation, errors with stack/context, performance.
+ * - Future: rate limiting, sanitization, per-customer config, full tracing/DB (Milestone 6).
+ * - Tests: Unit/Jest for logic/escalation heuristics, E2E/Playwright for multi-turn flows/status codes/curl checks.
+ * Env req: XAI_API_KEY (from console.x.ai), ALLOWED_ORIGINS (e.g. localhost:3000,example.com). For prod: NODE_ENV=production for Secure cookie.
  */
 export async function POST(req: Request) {
   if (!process.env.XAI_API_KEY) {
@@ -69,10 +75,7 @@ export async function POST(req: Request) {
   //   return new Response('Rate limit exceeded', { status: 429 });
   // }
 
-  // Milestone 6: Declare tracing vars for catch access
-  let trace: any = null;
-  let tracePath: string | null = null;
-  let startTime = 0;
+
 
   try {
     const body = await req.json();
@@ -156,7 +159,7 @@ export async function POST(req: Request) {
           model: (parsed.model as 'grok-beta' | 'grok-4-1') ?? 'grok-beta',
           sessionId: parsed.sessionId ?? crypto.randomUUID()
         };
-      } catch (e) {
+      } catch {
         console.warn(`[Session] Invalid cookie for ${sessionCookieName}, generating new session ${sessionData.sessionId.slice(0, 8)}`);
       }
     }
@@ -228,47 +231,73 @@ export async function POST(req: Request) {
     });
     const model = xai(modelId);
 
-    const systemPrompt = `You are a helpful support agent for website customer "${customerId}". Provide concise, accurate responses.`;
+    const createTicketTool = tool({
+      description: 'Creates a support ticket for the customer. Use this when the user has an issue that needs tracking or escalation beyond this chat.',
+      parameters: z.object({
+        title: z.string().describe('Short title summarizing the issue'),
+        description: z.string().describe('Full description including user details and context'),
+      }),
+      execute: async ({ title, description }) => {
+        try {
+          const ticketsDir = path.join(process.cwd(), 'data', 'tickets');
+          await fs.mkdir(ticketsDir, { recursive: true });
+          const id = randomUUID();
+          const ticketData = {
+            id,
+            title,
+            description,
+            customerId,
+            createdAt: new Date().toISOString(),
+            status: 'open',
+          };
+          const filePath = path.join(ticketsDir, `${id}.json`);
+          await fs.writeFile(filePath, JSON.stringify(ticketData, null, 2));
+          console.log(`Ticket ${id} created for customer ${customerId}`);
+          return `Support ticket "${title}" has been created with ID ${id}. Our team will review it shortly and contact you if needed.`;
+        } catch (error) {
+          console.error('Failed to create ticket:', error);
+          return 'I tried to create a ticket but encountered an error. Please provide more details or contact support directly.';
+        }
+      },
+    });
+
+    const systemPrompt = `You are Grok, a helpful support agent powered by xAI for customer "${customerId}". 
+
+You have access to tools to perform actions like creating support tickets.
+
+Use the createTicket tool whenever appropriate:
+- When the user reports a problem, bug, complaint, or requests assistance that requires follow-up.
+- Extract title and description from the user's input and conversation context.
+- Title should be concise and descriptive.
+- Description should be detailed.
+
+Be proactive in offering to create tickets for issues.
+After creating a ticket, inform the user about the ID and next steps.
+
+Provide empathetic, concise, and accurate responses.`;
 
     const result = await streamText({
+      tools: {
+        createTicket: createTicketTool,
+      },
       model,
       messages,
       system: systemPrompt,
-      onFinish: async (event) => {
-        trace.endTime = new Date().toISOString();
-        trace.durationMs = Date.now() - startTime;
-        trace.output = event.text;
-        trace.finishReason = event.finishReason;
-        trace.usage = 'usage' in event ? event.usage : null; // type guard if needed
-        trace.totalUsage = event.totalUsage;
-        trace.steps = event.steps.map((step: any, index: number) => ({
-          stepIndex: index,
-          textLength: step.text?.length || 0,
-          toolCallsCount: step.toolCalls?.length || 0,
-          finishReason: step.finishReason,
-          usage: step.usage,
-        }));
-        await fs.writeFile(tracePath, JSON.stringify(trace, null, 2));
-        console.log(`[Trace] Saved trace ${traceId} at ${tracePath}, duration: ${trace.durationMs}ms, total tokens: ${trace.totalUsage?.total || 0}`);
-      },
-      onError: async ({ error }) => {
-        trace.error = error instanceof Error ? error.message : String(error);
-        trace.endTime = new Date().toISOString();
-        trace.durationMs = Date.now() - startTime;
-        await fs.writeFile(tracePath, JSON.stringify(trace, null, 2)).catch((writeErr) => console.error('[Trace] Failed to save error trace:', writeErr));
-        console.error(`[Trace] Error trace saved for ${traceId}:`, trace.error);
-      },
+      // onFinish for tracing removed (Milestone 6); console logs used for M5
+      // onError for tracing removed (Milestone 6)
     });
 
     // Future: Dynamic per-customer config (e.g., model, key from DB/env map)
     // if (customerId !== 'default') { use custom key/model }
 
     return result.toTextStreamResponse();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Verbose error logging for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
     console.error('[API Debug] Full error details:', {
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
       originHost,
       customerId,
       userMessage: lastMsg?.content?.substring(0, 100) + '...',
