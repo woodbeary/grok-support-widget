@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { isValidSessionId } from '@/lib/session-id';
 
 export const runtime = 'nodejs';
 
@@ -8,8 +9,8 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const { sessionId } = await params;
-  if (!sessionId) {
-    return new Response(JSON.stringify({ error: 'Missing sessionId' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  if (!isValidSessionId(sessionId)) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid sessionId' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
   const tracesDir = path.join(process.cwd(), 'data', 'traces');

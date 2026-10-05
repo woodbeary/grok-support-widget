@@ -49,13 +49,17 @@ test.describe('Chat Widget E2E', () => {
     const body = await response.json();
     expect(body.status).toBe('Chat API ready');
 
-    // Test traces API (milestone 6)
-    const tracesRes = await request.get('/api/traces');
-    expect(tracesRes.status()).toBeLessThan(500);
-    if (tracesRes.status() === 200) {
-      const tracesBody = await tracesRes.json();
-      expect(Array.isArray(tracesBody.traces)).toBe(true);
-    }
+    // Traces are admin-only: no session cookie, or a forged one, gets 401
+    const tracesRes = await request.get('/api/admin/traces');
+    expect(tracesRes.status()).toBe(401);
+    const forgedRes = await request.get('/api/admin/traces', {
+      headers: { cookie: 'admin-token=valid' },
+    });
+    expect(forgedRes.status()).toBe(401);
+
+    // Wrong admin password is rejected (503 when ADMIN_PASSWORD is unset)
+    const loginRes = await request.post('/api/admin/login', { data: { password: 'wrong' } });
+    expect([401, 503]).toContain(loginRes.status());
 
     // Test unauthorized origin blocked
     const postResponse = await request.post('/api/chat', {
@@ -70,6 +74,14 @@ test.describe('Chat Widget E2E', () => {
       data: { messages: [{ role: 'user', content: 'Hello' }] },
     });
     expect(authResponse.status()).toBe(200);
+
+    // A malformed session cookie (it names the trace file) is replaced, never used
+    const traversalResponse = await request.post('/api/chat', {
+      headers: { origin: 'http://localhost:3000', cookie: 'chat-session-id=../../package' },
+      data: { messages: [{ role: 'user', content: 'Hello' }] },
+    });
+    expect(traversalResponse.status()).toBe(200);
+    expect(traversalResponse.headers()['set-cookie'] ?? '').not.toContain('../');
 
     // Empty messages returns 400
     const invalidResponse = await request.post('/api/chat', {

@@ -2,6 +2,7 @@ import { createXai } from '@ai-sdk/xai';
 import { generateText } from 'ai';
 import fs from 'fs/promises';
 import path from 'path';
+import { isValidSessionId } from '@/lib/session-id';
 
 export const runtime = 'nodejs'; // Required for fs access // Required for fs access
 
@@ -14,8 +15,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { sessionId, instructions } = body;
 
-    if (!sessionId) {
-      return new Response(JSON.stringify({ error: 'Missing sessionId' }), {
+    if (!isValidSessionId(sessionId)) {
+      return new Response(JSON.stringify({ error: 'Missing or invalid sessionId' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });

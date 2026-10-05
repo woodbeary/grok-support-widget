@@ -6,6 +6,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'node:crypto'
 import { cookies } from 'next/headers';
+import { isValidSessionId, newSessionId } from '@/lib/session-id';
 
 
 function getCookie(req: Request, cookieName: string): string | null {
@@ -143,7 +144,8 @@ export async function POST(req: Request) {
     // Milestone 6: Tracing setup
     const cookieStore = await cookies();
     const sessionCookie = (await cookieStore.get('chat-session-id'))?.value;
-    const sessionId = sessionCookie || `${Date.now()}-${Math.random().toString(36).substring(2)}`; // generate new if none
+    // The cookie value becomes a filename below, so anything malformed (e.g. "../") gets a fresh ID
+    const sessionId = isValidSessionId(sessionCookie) ? sessionCookie : newSessionId();
 
     // Fix: Store traces in local app data directory so Admin API can find them
     const tracesDir = path.join(process.cwd(), 'data', 'traces');
@@ -389,7 +391,7 @@ Provide empathetic, concise, and accurate responses.`;
     // Use toUIMessageStreamResponse() for compatibility with useChat hook streaming (AI SDK v5)
     const response = result.toUIMessageStreamResponse();
     // Fix: Set session cookie if not present to persist session across messages
-    if (!sessionCookie) {
+    if (sessionId !== sessionCookie) {
       response.headers.set('Set-Cookie', `chat-session-id=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`);
     }
     return response;

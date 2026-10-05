@@ -12,11 +12,13 @@ const config: Config = {
     '<rootDir>/src/**/?(*.)+(spec|test).ts?(x)',
     '<rootDir>/components/**/?(*.)+(spec|test).ts?(x)',
     '<rootDir>/app/**/?(*.)+(spec|test).ts?(x)',
+    '<rootDir>/lib/**/?(*.)+(spec|test).ts?(x)',
   ],
   collectCoverageFrom: [
     'components/**/*.{ts,tsx}',
     'app/**/*.{ts,tsx}',
     'src/**/*.{ts,tsx}',
+    'lib/**/*.{ts,tsx}',
     '!**/node_modules/**',
     '!**/*.d.ts',
   ],

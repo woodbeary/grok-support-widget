@@ -1,27 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers'; // Not used here
+import { ADMIN_COOKIE, ADMIN_SESSION_SECONDS, createAdminToken, passwordMatches } from '@/lib/admin-session';
 
-export const runtime = 'nodejs'; // Or edge, cookies work in both // Or edge, cookies work in both
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    // No default password: the dashboard stays locked until one is configured
+    return NextResponse.json({ error: 'Admin is disabled. Set ADMIN_PASSWORD to enable it.' }, { status: 503 });
+  }
+
   try {
     const body = await req.json();
     const { password } = body;
-    const adminPassword = process.env.ADMIN_PASSWORD || 'login123';
 
-    if (password !== adminPassword) {
+    if (typeof password !== 'string' || !(await passwordMatches(password, adminPassword))) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
+    }
+
+    const token = await createAdminToken();
+    if (!token) {
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
     }
 
     const response = NextResponse.json({ success: true });
 
-    // Set cookie
-    const cookieMaxAge = 60 * 60; // 1 hour
-    response.cookies.set('admin-token', 'valid', {
+    // Signed, expiring session cookie
+    response.cookies.set(ADMIN_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: cookieMaxAge,
+      maxAge: ADMIN_SESSION_SECONDS,
       path: '/',
     });
 
@@ -35,6 +44,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE() {
   // Logout
   const response = NextResponse.json({ success: true });
-  response.cookies.set('admin-token', '', { maxAge: 0 });
+  response.cookies.set(ADMIN_COOKIE, '', { maxAge: 0, path: '/' });
   return response;
 }
