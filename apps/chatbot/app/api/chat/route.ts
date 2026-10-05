@@ -236,7 +236,7 @@ export async function POST(req: Request) {
 
     // Analyze context/history (keywords/length/tools)
     const complexKeywords = ['explain', 'reason', 'calculate', 'analyze', 'solve', 'debug', 'why', 'how does', 'what is', 'step by step', 'compare', 'optimize'];
-    const mathRegex = /[0-9+\-*/().=<>!%]+/;
+    const mathRegex = /\d\s*[-+*/^%=<>]\s*\d/; // an actual expression like "2+2", not any digit or period
     const codeRegex = /\b(function|def|class|import|const|let|var|if|for|while|try|catch|async|await|return)\b|```|\.(js|py|java|cpp|go|rs)/;
     let totalUserLength = 0;
     let hasComplexKeywordOrCodeInHistory = false;
