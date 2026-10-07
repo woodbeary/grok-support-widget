@@ -1,6 +1,6 @@
 # Grok support widget
 
-**One script tag adds a Grok-powered support chat to any website. I built it for an xAI interview in December 2025: 13 commits in about eight hours on Dec 8.**
+**One script tag adds a Grok-powered support chat to any website. I built it in December 2025: 13 commits in about eight hours on Dec 8.**
 
 The visitor sees a chat bubble. Behind it are four pieces:
 
@@ -35,7 +35,7 @@ Built by [Jacob Lopez](https://jacob.com.ai).
 
 ## Hardened before publishing
 
-The interview build used a static admin cookie and a default password, which was fine on a laptop but not in public. Before making the repo public in October 2026, I fixed three things:
+The original build used a static admin cookie and a default password, which was fine on a laptop but not in public. Before making the repo public in October 2026, I fixed three things:
 
 - Admin sessions are now HMAC-signed and expire after an hour. There's no default password: `/admin` stays locked until `ADMIN_PASSWORD` is set. See [`lib/admin-session.ts`](apps/chatbot/lib/admin-session.ts).
 - Session IDs become trace filenames, so they're validated before they touch the filesystem. That blocks `../` traversal through a crafted cookie. See [`lib/session-id.ts`](apps/chatbot/lib/session-id.ts).
